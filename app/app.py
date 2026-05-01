@@ -1,8 +1,13 @@
 from flask import Flask, jsonify, render_template, request
 import psycopg2
 import os
+import urllib.request
+import urllib.error
+import json
 
 app = Flask(__name__)
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
 def get_db():
     return psycopg2.connect(
@@ -68,7 +73,35 @@ def health():
 @app.route("/api/ai", methods=["POST"])
 def ai_answer():
     data = request.json
-    question = data.get("question", "").lower()
+    question = data.get("question", "")
+
+    if GROQ_API_KEY:
+        try:
+            payload = json.dumps({
+                "model": "llama3-8b-8192",
+                "messages": [
+                    {"role": "system", "content": "Сен қан тапсыру жүйесінің ассистентісің. Қазақ тілінде қысқа жауап бер."},
+                    {"role": "user", "content": question}
+                ],
+                "max_tokens": 300
+            }).encode()
+
+            req = urllib.request.Request(
+                "https://api.groq.com/openai/v1/chat/completions",
+                data=payload,
+                headers={
+                    "Authorization": f"Bearer {GROQ_API_KEY}",
+                    "Content-Type": "application/json"
+                }
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                result = json.loads(resp.read())
+                answer = result["choices"][0]["message"]["content"]
+                return jsonify({"answer": answer, "source": "Groq AI"})
+        except Exception as e:
+            print(f"Groq error: {e}")
+
+    q = question.lower()
     answers = {
         "о(-)": "О(-) — универсалды донор. Барлық 8 қан тобына тапсыра алады!",
         "донор": "Донор болу шарттары: жас 18-65, салмақ 55кг+, соңғы 6 айда ауру болмауы керек.",
@@ -77,9 +110,10 @@ def ai_answer():
         "кейін": "Қан тапсырғаннан кейін: 15 мин демалыңыз, 500мл су ішіңіз, 24 сағат спорт жасамаңыз."
     }
     for key, ans in answers.items():
-        if key in question:
-            return jsonify({"answer": ans})
-    return jsonify({"answer": "Сұрағыңызды нақтырақ жазыңыз. Мысалы: О(-) туралы, донор шарттары, қан тапсырудың пайдасы."})
+        if key in q:
+            return jsonify({"answer": ans, "source": "local"})
+
+    return jsonify({"answer": "Сұрағыңызды нақтырақ жазыңыз.", "source": "local"})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
