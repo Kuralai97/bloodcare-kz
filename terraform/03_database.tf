@@ -15,7 +15,7 @@ resource "docker_container" "postgres" {
 
   ports {
     internal = 5432
-    external = 5433
+    external = 5434
   }
 
   volumes {
